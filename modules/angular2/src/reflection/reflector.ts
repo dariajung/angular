@@ -1,21 +1,25 @@
 import {Type, isPresent, stringify, BaseException} from 'angular2/src/facade/lang';
-import {List, ListWrapper, Map, MapWrapper, StringMapWrapper} from 'angular2/src/facade/collection';
+import {
+  List,
+  ListWrapper,
+  Map,
+  MapWrapper,
+  StringMap,
+  StringMapWrapper
+} from 'angular2/src/facade/collection';
 import {SetterFn, GetterFn, MethodFn} from './types';
+import {PlatformReflectionCapabilities} from './platform_reflection_capabilities';
 export {SetterFn, GetterFn, MethodFn} from './types';
-
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
+export {PlatformReflectionCapabilities} from './platform_reflection_capabilities';
 
 export class Reflector {
-  _typeInfo: Map<any, any>;
-  _getters: Map<any, any>;
-  _setters: Map<any, any>;
-  _methods: Map<any, any>;
-  reflectionCapabilities: any;
+  _typeInfo: Map<Type, any>;
+  _getters: Map<string, GetterFn>;
+  _setters: Map<string, SetterFn>;
+  _methods: Map<string, MethodFn>;
+  reflectionCapabilities: PlatformReflectionCapabilities;
 
-  constructor(reflectionCapabilities) {
+  constructor(reflectionCapabilities: PlatformReflectionCapabilities) {
     this._typeInfo = MapWrapper.create();
     this._getters = MapWrapper.create();
     this._setters = MapWrapper.create();
@@ -23,35 +27,51 @@ export class Reflector {
     this.reflectionCapabilities = reflectionCapabilities;
   }
 
-  registerType(type, typeInfo) { MapWrapper.set(this._typeInfo, type, typeInfo); }
+  registerType(type: Type, typeInfo: StringMap<string, any>): void {
+    MapWrapper.set(this._typeInfo, type, typeInfo);
+  }
 
-  registerGetters(getters) { _mergeMaps(this._getters, getters); }
+  registerGetters(getters: StringMap<string, GetterFn>): void {
+    _mergeMaps(this._getters, getters);
+  }
 
-  registerSetters(setters) { _mergeMaps(this._setters, setters); }
+  registerSetters(setters: StringMap<string, SetterFn>): void {
+    _mergeMaps(this._setters, setters);
+  }
 
-  registerMethods(methods) { _mergeMaps(this._methods, methods); }
+  registerMethods(methods: StringMap<string, MethodFn>): void {
+    _mergeMaps(this._methods, methods);
+  }
 
   factory(type: Type): Function {
-    if (MapWrapper.contains(this._typeInfo, type)) {
-      return MapWrapper.get(this._typeInfo, type)["factory"];
+    if (this._containsTypeInfo(type)) {
+      return this._getTypeInfoField(type, "factory", null);
     } else {
       return this.reflectionCapabilities.factory(type);
     }
   }
 
-  parameters(typeOfFunc): List<any> {
-    if (MapWrapper.contains(this._typeInfo, typeOfFunc)) {
-      return MapWrapper.get(this._typeInfo, typeOfFunc)["parameters"];
+  parameters(typeOrFunc): List<any> {
+    if (MapWrapper.contains(this._typeInfo, typeOrFunc)) {
+      return this._getTypeInfoField(typeOrFunc, "parameters", []);
     } else {
-      return this.reflectionCapabilities.parameters(typeOfFunc);
+      return this.reflectionCapabilities.parameters(typeOrFunc);
     }
   }
 
-  annotations(typeOfFunc): List<any> {
-    if (MapWrapper.contains(this._typeInfo, typeOfFunc)) {
-      return MapWrapper.get(this._typeInfo, typeOfFunc)["annotations"];
+  annotations(typeOrFunc): List<any> {
+    if (MapWrapper.contains(this._typeInfo, typeOrFunc)) {
+      return this._getTypeInfoField(typeOrFunc, "annotations", []);
     } else {
-      return this.reflectionCapabilities.annotations(typeOfFunc);
+      return this.reflectionCapabilities.annotations(typeOrFunc);
+    }
+  }
+
+  interfaces(type): List<any> {
+    if (MapWrapper.contains(this._typeInfo, type)) {
+      return this._getTypeInfoField(type, "interfaces", []);
+    } else {
+      return this.reflectionCapabilities.interfaces(type);
     }
   }
 
@@ -78,8 +98,15 @@ export class Reflector {
       return this.reflectionCapabilities.method(name);
     }
   }
+
+  _getTypeInfoField(typeOrFunc, key, defaultValue) {
+    var res = MapWrapper.get(this._typeInfo, typeOrFunc)[key];
+    return isPresent(res) ? res : defaultValue;
+  }
+
+  _containsTypeInfo(typeOrFunc) { return MapWrapper.contains(this._typeInfo, typeOrFunc); }
 }
 
-function _mergeMaps(target: Map<any, any>, config) {
+function _mergeMaps(target: Map<any, any>, config: StringMap<string, Function>): void {
   StringMapWrapper.forEach(config, (v, k) => MapWrapper.set(target, k, v));
 }

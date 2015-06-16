@@ -1,9 +1,4 @@
-import {CONST} from "angular2/src/facade/lang";
-
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
+import {CONST, stringify} from "angular2/src/facade/lang";
 
 /**
  * A parameter annotation that specifies a dependency.
@@ -20,6 +15,7 @@ export var __esModule = true;
 @CONST()
 export class Inject {
   constructor(public token) {}
+  toString() { return `@Inject(${stringify(this.token)})`; }
 }
 
 /**
@@ -38,6 +34,7 @@ export class Inject {
 @CONST()
 export class InjectPromise {
   constructor(public token) {}
+  toString() { return `@InjectPromise(${stringify(this.token)})`; }
 }
 
 /**
@@ -56,6 +53,7 @@ export class InjectPromise {
 @CONST()
 export class InjectLazy {
   constructor(public token) {}
+  toString() { return `@InjectLazy(${stringify(this.token)})`; }
 }
 
 /**
@@ -74,6 +72,7 @@ export class InjectLazy {
  */
 @CONST()
 export class Optional {
+  toString() { return `@Optional()`; }
 }
 
 /**

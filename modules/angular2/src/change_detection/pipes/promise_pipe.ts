@@ -3,11 +3,6 @@ import {isBlank, isPresent} from 'angular2/src/facade/lang';
 import {Pipe, WrappedValue} from './pipe';
 import {ChangeDetectorRef} from '../change_detector_ref';
 
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
-
 /**
  * Implements async bindings to Promise.
  *
@@ -23,10 +18,10 @@ export var __esModule = true;
  *   changeDetection: ON_PUSH
  * })
  * @View({
- *  inline: "Task Description {{description|promise}}"
+ *   template: "Task Description {{ description | async }}"
  * })
  * class Task {
- *  description:Promise<string>;
+ *   description:Promise<string>;
  * }
  *
  * ```
@@ -49,7 +44,11 @@ export class PromisePipe extends Pipe {
   supports(promise): boolean { return PromiseWrapper.isPromise(promise); }
 
   onDestroy(): void {
-    // NO-OP
+    if (isPresent(this._sourcePromise)) {
+      this._latestValue = null;
+      this._latestReturnedValue = null;
+      this._sourcePromise = null;
+    }
   }
 
   transform(promise: Promise<any>): any {

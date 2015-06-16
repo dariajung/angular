@@ -9,7 +9,7 @@ import 'package:angular2/src/render/dom/convert.dart';
 import 'package:angular2/src/transform/common/asset_reader.dart';
 import 'package:angular2/src/transform/common/logging.dart';
 import 'package:angular2/src/transform/common/names.dart';
-import 'package:angular2/src/transform/common/parser.dart';
+import 'package:angular2/src/transform/common/ng_deps.dart';
 import 'package:barback/barback.dart';
 import 'package:code_transformers/assets.dart';
 
@@ -22,12 +22,18 @@ Future<ViewDefinitionResults> createViewDefinitions(
 
 class ViewDefinitionResults {
   final NgDeps ngDeps;
-  final Map<RegisteredType, ViewDefinition> viewDefinitions;
+  final Map<RegisteredType, ViewDefinitionEntry> viewDefinitions;
   ViewDefinitionResults._(this.ngDeps, this.viewDefinitions);
 }
 
-String _getComponentId(AssetId assetId, String className) =>
-    '$assetId:$className';
+class ViewDefinitionEntry {
+  final DirectiveMetadata hostMetadata;
+  final ViewDefinition viewDef;
+
+  ViewDefinitionEntry._(this.hostMetadata, this.viewDef);
+}
+
+String _getComponentId(AssetId assetId, String className) => '$className';
 
 // TODO(kegluenq): Improve this test.
 bool _isViewAnnotation(InstanceCreationExpression node) =>
@@ -43,26 +49,29 @@ class _ViewDefinitionCreator {
   _ViewDefinitionCreator(AssetReader reader, AssetId entryPoint)
       : this.reader = reader,
         this.entryPoint = entryPoint,
-        ngDepsFuture = new Parser(reader).parse(entryPoint);
+        ngDepsFuture = NgDeps.parse(reader, entryPoint);
 
   Future<ViewDefinitionResults> createViewDefs() async {
     var ngDeps = await ngDepsFuture;
 
-    var retVal = <RegisteredType, ViewDefinition>{};
+    var retVal = <RegisteredType, ViewDefinitionEntry>{};
     var visitor = new _TemplateExtractVisitor(await _createMetadataMap());
     ngDeps.registeredTypes.forEach((rType) {
       visitor.reset();
       rType.annotations.accept(visitor);
       if (visitor.viewDef != null) {
         var typeName = '${rType.typeName}';
+        var hostMetadata = null;
         if (visitor._metadataMap.containsKey(typeName)) {
-          visitor.viewDef.componentId = visitor._metadataMap[typeName].id;
+          hostMetadata = visitor._metadataMap[typeName];
+          visitor.viewDef.componentId = hostMetadata.id;
         } else {
-          logger.warning('Missing component "$typeName" in metadata map',
+          logger.error('Missing component "$typeName" in metadata map',
               asset: entryPoint);
           visitor.viewDef.componentId = _getComponentId(entryPoint, typeName);
         }
-        retVal[rType] = visitor.viewDef;
+        retVal[rType] =
+            new ViewDefinitionEntry._(hostMetadata, visitor.viewDef);
       }
     });
     return new ViewDefinitionResults._(ngDeps, retVal);
@@ -87,8 +96,9 @@ class _ViewDefinitionCreator {
         var prefix = node.prefix != null && node.prefix.name != null
             ? '${node.prefix.name}'
             : null;
-        importAssetToPrefix[
-            uriToAssetId(entryPoint, uri, logger, null /* span */)] = prefix;
+        importAssetToPrefix[uriToAssetId(
+            entryPoint, uri, logger, null /* span */,
+            errorOnAbsolute: false)] = prefix;
       }
     }
     return importAssetToPrefix;
@@ -155,6 +165,7 @@ class _ViewDefinitionCreator {
 class _TemplateExtractVisitor extends Object with RecursiveAstVisitor<Object> {
   ViewDefinition viewDef = null;
   final Map<String, DirectiveMetadata> _metadataMap;
+  final ConstantEvaluator _evaluator = new ConstantEvaluator();
 
   _TemplateExtractVisitor(this._metadataMap);
 
@@ -191,19 +202,19 @@ class _TemplateExtractVisitor extends Object with RecursiveAstVisitor<Object> {
       // `templateUrl` property.
       if (viewDef == null) return null;
 
-      if (node.expression is! SimpleStringLiteral) {
+      var valueString = node.expression.accept(_evaluator);
+      if (valueString is! String) {
         logger.error(
             'Angular 2 currently only supports string literals in directives.'
             ' Source: ${node}');
         return null;
       }
-      var valueString = stringLiteralToString(node.expression);
       if (keyString == 'templateUrl') {
-        if (viewDef.absUrl != null) {
+        if (viewDef.templateAbsUrl != null) {
           logger.error(
               'Found multiple values for "templateUrl". Source: ${node}');
         }
-        viewDef.absUrl = valueString;
+        viewDef.templateAbsUrl = valueString;
       } else {
         // keyString == 'template'
         if (viewDef.template != null) {

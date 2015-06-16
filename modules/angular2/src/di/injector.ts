@@ -10,17 +10,18 @@ import {
   InstantiationError,
   InvalidBindingError
 } from './exceptions';
-import {FunctionWrapper, Type, isPresent, isBlank} from 'angular2/src/facade/lang';
+import {FunctionWrapper, Type, isPresent, isBlank, CONST_EXPR} from 'angular2/src/facade/lang';
 import {PromiseWrapper, Promise} from 'angular2/src/facade/async';
 import {Key} from './key';
+import {resolveForwardRef} from './forward_ref';
 
-var _constructing = new Object();
-var _notFound = new Object();
+const _constructing = CONST_EXPR(new Object());
+const _notFound = CONST_EXPR(new Object());
 
 class _Waiting {
-  promise: Promise<any>;
-  constructor(promise: Promise<any>) { this.promise = promise; }
+  constructor(public promise: Promise<any>) {}
 }
+
 function _isWaiting(obj): boolean {
   return obj instanceof _Waiting;
 }
@@ -42,8 +43,8 @@ function _isWaiting(obj): boolean {
  * }
  *
  * class Car {
- * 	constructor(@Inject(Engine) engine) {
- * 	}
+ *   constructor(@Inject(Engine) engine) {
+ *   }
  * }
  *
  * ```
@@ -66,10 +67,7 @@ function _isWaiting(obj): boolean {
  * @exportedAs angular2/di
  */
 export class Injector {
-  private _bindings: List<any>;
   private _instances: List<any>;
-  private _parent: Injector;
-  private _defaultBindings: boolean;
   private _asyncStrategy: _AsyncInjectorStrategy;
   private _syncStrategy: _SyncInjectorStrategy;
 
@@ -89,8 +87,8 @@ export class Injector {
    *such as
    * `fromResolvedBindings` and `createChildFromResolved`.
    */
-  static resolve(bindings: List<any>): List<ResolvedBinding> {
-    var resolvedBindings = _resolveBindings(bindings);
+  static resolve(bindings: List<Type | Binding | List<any>>): List<ResolvedBinding> {
+    var resolvedBindings = resolveBindings(bindings);
     var flatten = _flattenBindings(resolvedBindings, MapWrapper.create());
     return _createListOfBindings(flatten);
   }
@@ -108,7 +106,8 @@ export class Injector {
    * bindings.
    * @param `defaultBindings` Setting to true will auto-create bindings.
    */
-  static resolveAndCreate(bindings: List<any>, {defaultBindings = false}: any = {}): Injector {
+  static resolveAndCreate(bindings: List<Type | Binding | List<any>>,
+                          {defaultBindings = false}: any = {}): Injector {
     return new Injector(Injector.resolve(bindings), null, defaultBindings);
   }
 
@@ -116,8 +115,8 @@ export class Injector {
    * Creates an injector from previously resolved bindings. This bypasses resolution and flattening.
    * This API is the recommended way to construct injectors in performance-sensitive parts.
    *
-   * @param `bindings` A sparse list of {@link ResolvedBinding}s. See `resolve` for the {@link
-   *Injector}.
+   * @param `bindings` A sparse list of {@link ResolvedBinding}s. See `resolve` for the
+   * {@link Injector}.
    * @param `defaultBindings` Setting to true will auto-create bindings.
    */
   static fromResolvedBindings(bindings: List<ResolvedBinding>,
@@ -126,17 +125,15 @@ export class Injector {
   }
 
   /**
-   * @param `bindings` A sparse list of {@link ResolvedBinding}s. See `resolve` for the {@link
-   * Injector}.
+   * @param `bindings` A sparse list of {@link ResolvedBinding}s. See `resolve` for the
+   * {@link Injector}.
    * @param `parent` Parent Injector or `null` if root Injector.
    * @param `defaultBindings` Setting to true will auto-create bindings. (Only use with root
    * injector.)
    */
-  constructor(bindings: List<ResolvedBinding>, parent: Injector, defaultBindings: boolean) {
-    this._bindings = bindings;
+  constructor(private _bindings: List<ResolvedBinding>, private _parent: Injector,
+              private _defaultBindings: boolean) {
     this._instances = this._createInstances();
-    this._parent = parent;
-    this._defaultBindings = defaultBindings;
     this._asyncStrategy = new _AsyncInjectorStrategy(this);
     this._syncStrategy = new _SyncInjectorStrategy(this);
   }
@@ -183,7 +180,7 @@ export class Injector {
    * recursive list of more bindings.
    *
    */
-  resolveAndCreateChild(bindings: List<any>): Injector {
+  resolveAndCreateChild(bindings: List<Type | Binding | List<any>>): Injector {
     return new Injector(Injector.resolve(bindings), this, false);
   }
 
@@ -258,17 +255,20 @@ export class Injector {
   _clear(key: Key): void { this._setInstance(key, null); }
 }
 
+interface _InjectorStrategy {
+  readFromCache(key: Key);
+  instantiate(key: Key);
+}
 
-class _SyncInjectorStrategy {
-  injector: Injector;
-  constructor(injector: Injector) { this.injector = injector; }
+class _SyncInjectorStrategy implements _InjectorStrategy {
+  constructor(private _injector: Injector) {}
 
   readFromCache(key: Key) {
     if (key.token === Injector) {
-      return this.injector;
+      return this._injector;
     }
 
-    var instance = this.injector._getInstance(key);
+    var instance = this._injector._getInstance(key);
 
     if (instance === _constructing) {
       throw new CyclicDependencyError(key);
@@ -280,41 +280,39 @@ class _SyncInjectorStrategy {
   }
 
   instantiate(key: Key) {
-    var binding = this.injector._getBinding(key);
+    var binding = this._injector._getBinding(key);
     if (isBlank(binding)) return _notFound;
 
     if (binding.providedAsPromise) throw new AsyncBindingError(key);
 
     // add a marker so we can detect cyclic dependencies
-    this.injector._markAsConstructing(key);
+    this._injector._markAsConstructing(key);
 
-    var deps = this.injector._resolveDependencies(key, binding, false);
+    var deps = this._injector._resolveDependencies(key, binding, false);
     return this._createInstance(key, binding, deps);
   }
 
   _createInstance(key: Key, binding: ResolvedBinding, deps: List<any>) {
     try {
       var instance = FunctionWrapper.apply(binding.factory, deps);
-      this.injector._setInstance(key, instance);
+      this._injector._setInstance(key, instance);
       return instance;
     } catch (e) {
-      this.injector._clear(key);
+      this._injector._clear(key);
       throw new InstantiationError(e, key);
     }
   }
 }
 
-
-class _AsyncInjectorStrategy {
-  injector: Injector;
-  constructor(injector: Injector) { this.injector = injector; }
+class _AsyncInjectorStrategy implements _InjectorStrategy {
+  constructor(private _injector: Injector) {}
 
   readFromCache(key: Key) {
     if (key.token === Injector) {
-      return PromiseWrapper.resolve(this.injector);
+      return PromiseWrapper.resolve(this._injector);
     }
 
-    var instance = this.injector._getInstance(key);
+    var instance = this._injector._getInstance(key);
 
     if (instance === _constructing) {
       throw new CyclicDependencyError(key);
@@ -328,49 +326,49 @@ class _AsyncInjectorStrategy {
   }
 
   instantiate(key: Key) /* Promise?? */ {
-    var binding = this.injector._getBinding(key);
+    var binding = this._injector._getBinding(key);
     if (isBlank(binding)) return _notFound;
 
     // add a marker so we can detect cyclic dependencies
-    this.injector._markAsConstructing(key);
+    this._injector._markAsConstructing(key);
 
-    var deps = this.injector._resolveDependencies(key, binding, true);
+    var deps = this._injector._resolveDependencies(key, binding, true);
     var depsPromise = PromiseWrapper.all(deps);
 
-    var promise = PromiseWrapper.then(depsPromise, null, (e) => this._errorHandler(key, e))
+    var promise = PromiseWrapper.then(depsPromise, null, (e, s) => this._errorHandler(key, e, s))
                       .then(deps => this._findOrCreate(key, binding, deps))
                       .then(instance => this._cacheInstance(key, instance));
 
-    this.injector._setInstance(key, new _Waiting(promise));
+    this._injector._setInstance(key, new _Waiting(promise));
     return promise;
   }
 
-  _errorHandler(key: Key, e): Promise<any> {
+  _errorHandler(key: Key, e, stack): Promise<any> {
     if (e instanceof AbstractBindingError) e.addKey(key);
-    return PromiseWrapper.reject(e);
+    return PromiseWrapper.reject(e, stack);
   }
 
   _findOrCreate(key: Key, binding: ResolvedBinding, deps: List<any>) {
     try {
-      var instance = this.injector._getInstance(key);
+      var instance = this._injector._getInstance(key);
       if (!_isWaiting(instance)) return instance;
       return FunctionWrapper.apply(binding.factory, deps);
     } catch (e) {
-      this.injector._clear(key);
+      this._injector._clear(key);
       throw new InstantiationError(e, key);
     }
   }
 
   _cacheInstance(key, instance) {
-    this.injector._setInstance(key, instance);
+    this._injector._setInstance(key, instance);
     return instance
   }
 }
 
-function _resolveBindings(bindings: List<any>): List<ResolvedBinding> {
+export function resolveBindings(bindings: List<Type | Binding | List<any>>): List<ResolvedBinding> {
   var resolvedList = ListWrapper.createFixedSize(bindings.length);
   for (var i = 0; i < bindings.length; i++) {
-    var unresolved = bindings[i];
+    var unresolved = resolveForwardRef(bindings[i]);
     var resolved;
     if (unresolved instanceof ResolvedBinding) {
       resolved = unresolved;  // ha-ha! I'm easily amused
@@ -379,7 +377,7 @@ function _resolveBindings(bindings: List<any>): List<ResolvedBinding> {
     } else if (unresolved instanceof Binding) {
       resolved = unresolved.resolve();
     } else if (unresolved instanceof List) {
-      resolved = _resolveBindings(unresolved);
+      resolved = resolveBindings(unresolved);
     } else if (unresolved instanceof BindingBuilder) {
       throw new InvalidBindingError(unresolved.token);
     } else {
@@ -390,13 +388,21 @@ function _resolveBindings(bindings: List<any>): List<ResolvedBinding> {
   return resolvedList;
 }
 
-function _createListOfBindings(flattenedBindings): List<any> {
+function flattenBindings(bindings: List<ResolvedBinding>): List<ResolvedBinding> {
+  var map = _flattenBindings(bindings, MapWrapper.create());
+  var res = ListWrapper.create();
+  MapWrapper.forEach(map, (binding, keyId) => ListWrapper.push(res, binding));
+  return res;
+}
+
+function _createListOfBindings(
+    flattenedBindings: Map<number, ResolvedBinding>): List<ResolvedBinding> {
   var bindings = ListWrapper.createFixedSize(Key.numberOfKeys + 1);
   MapWrapper.forEach(flattenedBindings, (v, keyId) => bindings[keyId] = v);
   return bindings;
 }
 
-function _flattenBindings(bindings: List<ResolvedBinding /* | List<any>*/>,
+function _flattenBindings(bindings: List<ResolvedBinding | List<any>>,
                           res: Map<number, ResolvedBinding>): Map<number, ResolvedBinding> {
   ListWrapper.forEach(bindings, function(b) {
     if (b instanceof ResolvedBinding) {

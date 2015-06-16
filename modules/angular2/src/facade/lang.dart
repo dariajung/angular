@@ -26,6 +26,7 @@ bool isBlank(obj) => obj == null;
 bool isString(obj) => obj is String;
 bool isFunction(obj) => obj is Function;
 bool isType(obj) => obj is Type;
+bool isMap(obj) => obj is Map;
 
 String stringify(obj) => obj.toString();
 
@@ -64,6 +65,14 @@ class StringWrapper {
     return s.replaceAll(from, replace);
   }
 
+  static String toUpperCase(String s) {
+    return s.toUpperCase();
+  }
+
+  static String toLowerCase(String s) {
+    return s.toLowerCase();
+  }
+
   static startsWith(String s, String start) {
     return s.startsWith(start);
   }
@@ -79,6 +88,8 @@ class StringWrapper {
   static bool contains(String s, String substr) {
     return s.contains(substr);
   }
+
+  static bool isString(s) => s is String;
 }
 
 class StringJoiner {
@@ -128,6 +139,9 @@ class RegExpWrapper {
   }
   static Match firstMatch(RegExp regExp, String input) {
     return regExp.firstMatch(input);
+  }
+  static bool test(RegExp regExp, String input) {
+    return regExp.hasMatch(input);
   }
   static Iterator<Match> matcher(RegExp regExp, String input) {
     return regExp.allMatches(input).iterator;
@@ -185,6 +199,10 @@ dynamic normalizeBlank(obj) {
   return isBlank(obj) ? null : obj;
 }
 
+bool normalizeBool(bool obj) {
+  return isBlank(obj) ? false : obj;
+}
+
 bool isJsObject(o) {
   return false;
 }
@@ -201,7 +219,10 @@ bool assertionsEnabled() {
 // Can't be all uppercase as our transpiler would think it is a special directive...
 class Json {
   static parse(String s) => convert.JSON.decode(s);
-  static String stringify(data) => convert.JSON.encode(data);
+  static String stringify(data) {
+    var encoder = new convert.JsonEncoder.withIndent("  ");
+    return encoder.convert(data);
+  }
 }
 
 class DateWrapper {

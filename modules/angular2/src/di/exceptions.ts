@@ -1,5 +1,5 @@
 import {ListWrapper, List} from 'angular2/src/facade/collection';
-import {stringify, BaseException} from 'angular2/src/facade/lang';
+import {stringify, BaseException, isBlank} from 'angular2/src/facade/lang';
 
 function findFirstClosedCycle(keys: List<any>): List<any> {
   var res = [];
@@ -61,7 +61,7 @@ export class AbstractBindingError extends BaseException {
 export class NoBindingError extends AbstractBindingError {
   // TODO(tbosch): Can't do key:Key as this results in a circular dependency!
   constructor(key) {
-    super(key, function (keys:List<any>) {
+    super(key, function(keys: List<any>) {
       var first = stringify(ListWrapper.first(keys).token);
       return `No provider for ${first}!${constructResolvingPath(keys)}`;
     });
@@ -95,7 +95,7 @@ export class NoBindingError extends AbstractBindingError {
 export class AsyncBindingError extends AbstractBindingError {
   // TODO(tbosch): Can't do key:Key as this results in a circular dependency!
   constructor(key) {
-    super(key, function (keys:List<any>) {
+    super(key, function(keys: List<any>) {
       var first = stringify(ListWrapper.first(keys).token);
       return `Cannot instantiate ${first} synchronously. It is provided as a promise!${constructResolvingPath(keys)}`;
     });
@@ -123,7 +123,7 @@ export class AsyncBindingError extends AbstractBindingError {
 export class CyclicDependencyError extends AbstractBindingError {
   // TODO(tbosch): Can't do key:Key as this results in a circular dependency!
   constructor(key) {
-    super(key, function (keys:List<any>) {
+    super(key, function(keys: List<any>) {
       return `Cannot instantiate cyclic dependency!${constructResolvingPath(keys)}`;
     });
   }
@@ -142,7 +142,7 @@ export class InstantiationError extends AbstractBindingError {
   causeKey;
   // TODO(tbosch): Can't do key:Key as this results in a circular dependency!
   constructor(cause, key) {
-    super(key, function (keys:List<any>) {
+    super(key, function(keys: List<any>) {
       var first = stringify(ListWrapper.first(keys).token);
       return `Error during instantiation of ${first}!${constructResolvingPath(keys)}. ORIGINAL ERROR: ${cause}`;
     });
@@ -179,9 +179,19 @@ export class InvalidBindingError extends BaseException {
 export class NoAnnotationError extends BaseException {
   name: string;
   message: string;
-  constructor(typeOrFunc) {
+  constructor(typeOrFunc, params: List<List<any>>) {
     super();
-    this.message = "Cannot resolve all parameters for " + stringify(typeOrFunc) + ". " +
+    var signature = ListWrapper.create();
+    for (var i = 0, ii = params.length; i < ii; i++) {
+      var parameter = params[i];
+      if (isBlank(parameter) || parameter.length == 0) {
+        ListWrapper.push(signature, '?');
+      } else {
+        ListWrapper.push(signature, ListWrapper.map(parameter, stringify).join(' '));
+      }
+    }
+    this.message = "Cannot resolve all parameters for " + stringify(typeOrFunc) + "(" +
+                   signature.join(', ') + "). " +
                    'Make sure they all have valid type or annotations.';
   }
 

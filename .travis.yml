@@ -6,6 +6,7 @@ node_js:
 cache:
   directories:
     - node_modules
+    - $HOME/.pub-cache
 
 env:
   global:
@@ -25,6 +26,9 @@ env:
   - MODE=dart DART_CHANNEL=stable
   - MODE=dart DART_CHANNEL=dev
 
+addons:
+  firefox: "38.0"
+
 before_install:
 - echo ${TSDRC} > .tsdrc
 - export DISPLAY=:99.0
@@ -36,12 +40,12 @@ before_install:
 
 install:
   # Update npm
-  - npm install -g npm@2.7.4
+  - npm install -g npm@2.9.1
   - npm --version
   # Check the size of caches
   - du -sh ./node_modules || true
-  # Install npm dependecies and ensure that npm cache is not stale
-  - tools/npm/install-dependencies.sh
+  # Install npm dependecies
+  - npm install
 
 before_script:
 - mkdir -p $LOGS_DIR

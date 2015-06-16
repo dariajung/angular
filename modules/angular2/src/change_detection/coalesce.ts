@@ -1,11 +1,6 @@
 import {isPresent} from 'angular2/src/facade/lang';
 import {List, ListWrapper, Map, MapWrapper} from 'angular2/src/facade/collection';
-import {RECORD_TYPE_SELF, ProtoRecord} from './proto_record';
-
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
+import {RecordType, ProtoRecord} from './proto_record';
 
 /**
  * Removes "duplicate" records. It assuming that record evaluation does not
@@ -43,13 +38,14 @@ export function coalesce(records: List<ProtoRecord>): List<ProtoRecord> {
 }
 
 function _selfRecord(r: ProtoRecord, contextIndex: number, selfIndex: number): ProtoRecord {
-  return new ProtoRecord(RECORD_TYPE_SELF, "self", null, [], r.fixedArgs, contextIndex,
+  return new ProtoRecord(RecordType.SELF, "self", null, [], r.fixedArgs, contextIndex,
                          r.directiveIndex, selfIndex, r.bindingRecord, r.expressionAsString,
                          r.lastInBinding, r.lastInDirective);
 }
 
 function _findMatching(r: ProtoRecord, rs: List<ProtoRecord>) {
-  return ListWrapper.find(rs, (rr) => rr.mode === r.mode && rr.funcOrValue === r.funcOrValue &&
+  return ListWrapper.find(rs, (rr) => rr.mode !== RecordType.DIRECTIVE_LIFECYCLE &&
+                                      rr.mode === r.mode && rr.funcOrValue === r.funcOrValue &&
                                       rr.contextIndex === r.contextIndex &&
                                       ListWrapper.equals(rr.args, r.args));
 }

@@ -2,7 +2,16 @@ library test_lib.test_lib;
 
 import 'package:guinness/guinness.dart' as gns;
 export 'package:guinness/guinness.dart'
-    hide Expect, expect, NotExpect, beforeEach, it, iit, xit;
+    hide
+        Expect,
+        expect,
+        NotExpect,
+        beforeEach,
+        it,
+        iit,
+        xit,
+        SpyObject,
+        SpyFunction;
 import 'package:unittest/unittest.dart' hide expect;
 
 import 'dart:async';
@@ -114,6 +123,7 @@ class NotExpect extends gns.NotExpect {
 
   void toEqual(expected) => toHaveSameProps(expected);
   void toBePromise() => _expect(actual is Future, equals(false));
+  void toBeNull() => _expect(actual == null, equals(false));
   Function get _expect => gns.guinness.matchers.expect;
 }
 

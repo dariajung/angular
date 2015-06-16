@@ -1,11 +1,6 @@
 import {isPresent, BaseException} from 'angular2/src/facade/lang';
 import {ListWrapper, MapWrapper} from 'angular2/src/facade/collection';
 
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
-
 export class Locals {
   constructor(public parent: Locals, public current: Map<any, any>) {}
 
@@ -40,7 +35,8 @@ export class Locals {
     if (MapWrapper.contains(this.current, name)) {
       MapWrapper.set(this.current, name, value);
     } else {
-      throw new BaseException('Setting of new keys post-construction is not supported.');
+      throw new BaseException(
+          `Setting of new keys post-construction is not supported. Key: ${name}.`);
     }
   }
 

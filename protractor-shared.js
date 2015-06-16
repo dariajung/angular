@@ -1,5 +1,6 @@
 // load traceur runtime as our tests are written in es6
 require('traceur/bin/traceur-runtime.js');
+require('reflect-metadata');
 var fs = require('fs-extra');
 
 var argv = require('yargs')
@@ -71,7 +72,10 @@ var BROWSER_CAPS = {
   ChromeDesktop: {
     browserName: 'chrome',
     chromeOptions: mergeInto(CHROME_OPTIONS, {
-      'mobileEmulation': CHROME_MOBILE_EMULATION
+      // TODO(tbosch): when we are using mobile emulation on
+      // chrome 44.0 beta, clicks are no more working.
+      // see https://github.com/angular/angular/issues/2309
+      // 'mobileEmulation': CHROME_MOBILE_EMULATION
     }),
     loggingPrefs: {
       performance: 'ALL',

@@ -1,14 +1,9 @@
 import {isPresent, isBlank, BaseException, Type} from 'angular2/src/facade/lang';
 import {List, ListWrapper, MapWrapper, StringMapWrapper} from 'angular2/src/facade/collection';
 import {ProtoRecord} from './proto_record';
-import {ExpressionChangedAfterItHasBeenChecked} from './exceptions';
+import {DehydratedException, ExpressionChangedAfterItHasBeenChecked} from './exceptions';
 import {WrappedValue} from './pipes/pipe';
 import {CHECK_ALWAYS, CHECK_ONCE, CHECKED, DETACHED, ON_PUSH} from './constants';
-
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
 
 export var uninitialized = new Object();
 
@@ -49,7 +44,7 @@ function _simpleChange(previousValue, currentValue) {
 }
 
 export class ChangeDetectionUtil {
-  static unitialized() { return uninitialized; }
+  static uninitialized() { return uninitialized; }
 
   static arrayFn0() { return []; }
   static arrayFn1(a1) { return [a1]; }
@@ -72,6 +67,8 @@ export class ChangeDetectionUtil {
   static operation_remainder(left, right) { return left % right; }
   static operation_equals(left, right) { return left == right; }
   static operation_not_equals(left, right) { return left != right; }
+  static operation_identical(left, right) { return left === right; }
+  static operation_not_identical(left, right) { return left !== right; }
   static operation_less_then(left, right) { return left < right; }
   static operation_greater_then(left, right) { return left > right; }
   static operation_less_or_equals_then(left, right) { return left <= right; }
@@ -130,6 +127,8 @@ export class ChangeDetectionUtil {
     throw new ExpressionChangedAfterItHasBeenChecked(proto, change);
   }
 
+  static throwDehydrated() { throw new DehydratedException(); }
+
   static changeDetectionMode(strategy: string) {
     return strategy == ON_PUSH ? CHECK_ONCE : CHECK_ALWAYS;
   }
@@ -145,4 +144,6 @@ export class ChangeDetectionUtil {
     changes[propertyName] = change;
     return changes;
   }
+
+  static isValueBlank(value: any): boolean { return isBlank(value); }
 }

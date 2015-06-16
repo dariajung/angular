@@ -19,6 +19,7 @@ export {Parser} from './src/change_detection/parser/parser';
 export {Locals} from './src/change_detection/parser/locals';
 
 export {
+  DehydratedException,
   ExpressionChangedAfterItHasBeenChecked,
   ChangeDetectionError
 } from './src/change_detection/exceptions';
@@ -26,7 +27,8 @@ export {
   ProtoChangeDetector,
   ChangeDispatcher,
   ChangeDetector,
-  ChangeDetection
+  ChangeDetection,
+  ChangeDetectorDefinition
 } from './src/change_detection/interfaces';
 export {
   CHECK_ONCE,
@@ -36,26 +38,20 @@ export {
   ON_PUSH,
   DEFAULT
 } from './src/change_detection/constants';
-export {
-  DynamicProtoChangeDetector,
-  JitProtoChangeDetector
-} from './src/change_detection/proto_change_detector';
+export {DynamicProtoChangeDetector} from './src/change_detection/proto_change_detector';
 export {BindingRecord} from './src/change_detection/binding_record';
 export {DirectiveIndex, DirectiveRecord} from './src/change_detection/directive_record';
 export {DynamicChangeDetector} from './src/change_detection/dynamic_change_detector';
 export {ChangeDetectorRef} from './src/change_detection/change_detector_ref';
 export {PipeRegistry} from './src/change_detection/pipes/pipe_registry';
 export {uninitialized} from './src/change_detection/change_detection_util';
-export {WrappedValue, Pipe} from './src/change_detection/pipes/pipe';
+export {WrappedValue, Pipe, PipeFactory} from './src/change_detection/pipes/pipe';
 export {NullPipe, NullPipeFactory} from './src/change_detection/pipes/null_pipe';
 export {
   defaultPipes,
   DynamicChangeDetection,
   JitChangeDetection,
+  PreGeneratedChangeDetection,
+  preGeneratedProtoDetectors,
   defaultPipeRegistry
 } from './src/change_detection/change_detection';
-
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;

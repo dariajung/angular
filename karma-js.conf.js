@@ -1,7 +1,5 @@
 // Karma configuration
 // Generated on Thu Sep 25 2014 11:52:02 GMT-0700 (PDT)
-var file2moduleName = require('./tools/build/file2modulename');
-
 module.exports = function(config) {
   config.set({
 
@@ -15,6 +13,7 @@ module.exports = function(config) {
       // zone-microtask must be included first as it contains a Promise monkey patch
       'node_modules/zone.js/dist/zone-microtask.js',
       'node_modules/zone.js/dist/long-stack-trace-zone.js',
+      'node_modules/zone.js/dist/jasmine-patch.js',
 
       'node_modules/traceur/bin/traceur-runtime.js',
       'node_modules/es6-module-loader/dist/es6-module-loader-sans-promises.src.js',
@@ -25,7 +24,8 @@ module.exports = function(config) {
       'node_modules/rx/dist/rx.js',
       'node_modules/reflect-metadata/Reflect.js',
       'tools/build/file2modulename.js',
-      'test-main.js'
+      'test-main.js',
+      {pattern: 'modules/**/test/**/static_assets/**', included: false, watched: false}
     ],
 
     exclude: [

@@ -7,7 +7,6 @@ import {
 } from 'angular2/src/facade/collection';
 
 import {
-  int,
   isBlank,
   isPresent,
   stringify,
@@ -16,11 +15,6 @@ import {
 } from 'angular2/src/facade/lang';
 
 import {WrappedValue, Pipe, PipeFactory} from './pipe';
-
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
 
 @CONST()
 export class IterableChangesFactory extends PipeFactory {
@@ -615,7 +609,7 @@ class _DuplicateItemRecordList {
 }
 
 class _DuplicateMap {
-  map: Map<any, any>;
+  map: Map<any, _DuplicateItemRecordList>;
   constructor() { this.map = MapWrapper.create(); }
 
   put(record: CollectionChangeRecord) {

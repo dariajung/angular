@@ -76,6 +76,9 @@ class Html5LibDomAdapter implements DomAdapter {
   createEvent(eventType) {
     throw 'not implemented';
   }
+  preventDefault(evt) {
+    throw 'not implemented';
+  }
   getInnerHTML(el) {
     return el.innerHtml;
   }
@@ -99,7 +102,7 @@ class Html5LibDomAdapter implements DomAdapter {
     throw 'not implemented';
   }
   content(node) {
-    throw 'not implemented';
+    return node;
   }
 
   firstChild(el) => el is NodeList ? el.first : el.firstChild;
@@ -139,7 +142,7 @@ class Html5LibDomAdapter implements DomAdapter {
     throw 'not implemented';
   }
   getText(el) {
-    throw 'not implemented';
+    return el.text;
   }
   setText(el, String value) => el.text = value;
 
@@ -180,7 +183,8 @@ class Html5LibDomAdapter implements DomAdapter {
   clone(node) => node.clone(true);
 
   hasProperty(element, String name) {
-    throw 'not implemented';
+    // This is needed for serverside compile to generate the right getters/setters...
+    return true;
   }
   getElementsByClassName(element, String name) {
     throw 'not implemented';
@@ -299,5 +303,18 @@ class Html5LibDomAdapter implements DomAdapter {
   }
   getBaseHref() {
     throw 'not implemented';
+  }
+  String getUserAgent() {
+    throw 'not implemented';
+  }
+  void setData(Element element, String name, String value) {
+    this.setAttribute(element, 'data-${name}', value);
+  }
+  String getData(Element element, String name) {
+    return this.getAttribute(element, 'data-${name}');
+  }
+  // TODO(tbosch): move this into a separate environment class once we have it
+  setGlobalVar(String name, value) {
+    // noop on the server
   }
 }

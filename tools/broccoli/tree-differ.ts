@@ -4,6 +4,16 @@ import fs = require('fs');
 import path = require('path');
 
 
+function tryStatSync(path) {
+  try {
+    return fs.statSync(path);
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw e;
+  }
+}
+
+
 export class TreeDiffer {
   private fingerprints: {[key: string]: string} = Object.create(null);
   private nextFingerprints: {[key: string]: string} = Object.create(null);
@@ -11,7 +21,7 @@ export class TreeDiffer {
   private include: RegExp = null;
   private exclude: RegExp = null;
 
-  constructor(private rootPath: string, includeExtensions?: string[],
+  constructor(private label: string, private rootPath: string, includeExtensions?: string[],
               excludeExtensions?: string[]) {
     this.rootDirName = path.basename(rootPath);
 
@@ -21,7 +31,9 @@ export class TreeDiffer {
     this.exclude = (excludeExtensions || []).length ? buildRegexp(excludeExtensions) : null;
 
     function combine(prev, curr) {
-      if (curr.charAt(0) !== ".") throw new TypeError("Extension must begin with '.'");
+      if (curr.charAt(0) !== ".") {
+        throw new Error(`Extension must begin with '.'. Was: '${curr}'`);
+      }
       let kSpecialRegexpChars = /[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g;
       curr = '(' + curr.replace(kSpecialRegexpChars, '\\$&') + ')';
       return prev ? (prev + '|' + curr) : curr;
@@ -30,7 +42,7 @@ export class TreeDiffer {
 
 
   public diffTree(): DiffResult {
-    let result = new DirtyCheckingDiffResult(this.rootDirName);
+    let result = new DirtyCheckingDiffResult(this.label, this.rootDirName);
     this.dirtyCheckPath(this.rootPath, result);
     this.detectDeletionsAndUpdateFingerprints(result);
     result.endTime = Date.now();
@@ -41,7 +53,11 @@ export class TreeDiffer {
   private dirtyCheckPath(rootDir: string, result: DirtyCheckingDiffResult) {
     fs.readdirSync(rootDir).forEach((segment) => {
       let absolutePath = path.join(rootDir, segment);
-      let pathStat = fs.statSync(absolutePath);
+      let pathStat = fs.lstatSync(absolutePath);
+      if (pathStat.isSymbolicLink()) {
+        pathStat = tryStatSync(absolutePath);
+        if (pathStat === null) return;
+      }
 
       if (pathStat.isDirectory()) {
         result.directoriesChecked++;
@@ -50,8 +66,14 @@ export class TreeDiffer {
         if (!(this.include && !absolutePath.match(this.include)) &&
             !(this.exclude && absolutePath.match(this.exclude))) {
           result.filesChecked++;
-          if (this.isFileDirty(absolutePath, pathStat)) {
-            result.changedPaths.push(path.relative(this.rootPath, absolutePath));
+          let relativeFilePath = path.relative(this.rootPath, absolutePath);
+
+          switch (this.isFileDirty(absolutePath, pathStat)) {
+            case FileStatus.ADDED:
+              result.addedPaths.push(relativeFilePath);
+              break;
+            case FileStatus.CHANGED:
+              result.changedPaths.push(relativeFilePath);
           }
         }
       }
@@ -61,7 +83,7 @@ export class TreeDiffer {
   }
 
 
-  private isFileDirty(path: string, stat: fs.Stats): boolean {
+  private isFileDirty(path: string, stat: fs.Stats): FileStatus {
     let oldFingerprint = this.fingerprints[path];
     let newFingerprint = `${stat.mtime.getTime()} # ${stat.size}`;
 
@@ -72,11 +94,13 @@ export class TreeDiffer {
 
       if (oldFingerprint === newFingerprint) {
         // nothing changed
-        return false;
+        return FileStatus.UNCHANGED;
       }
+
+      return FileStatus.CHANGED;
     }
 
-    return true;
+    return FileStatus.ADDED;
   }
 
 
@@ -98,6 +122,7 @@ export class TreeDiffer {
 
 
 export interface DiffResult {
+  addedPaths: string[];
   changedPaths: string[];
   removedPaths: string[];
   log(verbose: boolean): void;
@@ -108,22 +133,24 @@ export interface DiffResult {
 class DirtyCheckingDiffResult {
   public filesChecked: number = 0;
   public directoriesChecked: number = 0;
+  public addedPaths: string[] = [];
   public changedPaths: string[] = [];
   public removedPaths: string[] = [];
   public startTime: number = Date.now();
   public endTime: number = null;
 
-  constructor(public name: string) {}
+  constructor(public label: string, public directoryName: string) {}
 
   toString() {
-    return `${pad(this.name, 40)}, duration: ${pad(this.endTime - this.startTime, 5)}ms, ` +
-           `${pad(this.changedPaths.length + this.removedPaths.length, 5)} changes detected ` +
-           `(files: ${pad(this.filesChecked, 5)}, directories: ${pad(this.directoriesChecked, 4)})`;
+    return `${pad(this.label, 30)}, ${pad(this.endTime - this.startTime, 5)}ms, ` +
+           `${pad(this.addedPaths.length + this.changedPaths.length + this.removedPaths.length, 5)} changes ` +
+           `(files: ${pad(this.filesChecked, 5)}, dirs: ${pad(this.directoriesChecked, 4)})`;
   }
 
   log(verbose) {
-    let prefixedPaths =
-        this.changedPaths.map((p) => `* ${p}`).concat(this.removedPaths.map((p) => `- ${p}`));
+    let prefixedPaths = this.addedPaths.map(p => `+ ${p}`)
+                            .concat(this.changedPaths.map(p => `* ${p}`))
+                            .concat(this.removedPaths.map(p => `- ${p}`));
     console.log(`Tree diff: ${this}` + ((verbose && prefixedPaths.length) ?
                                              ` [\n  ${prefixedPaths.join('\n  ')}\n]` :
                                              ''));
@@ -137,3 +164,6 @@ function pad(value, length) {
   whitespaceLength = whitespaceLength + 1;
   return new Array(whitespaceLength).join(' ') + value;
 }
+
+
+enum FileStatus { ADDED, UNCHANGED, CHANGED }

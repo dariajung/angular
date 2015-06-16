@@ -17,7 +17,8 @@ interface BroccoliTree {
    * For plugins that take only one input tree, it might be more convenient to use the `inputPath`
    *property instead.
    *
-   * This property is set just before the first rebuild and doesn't change afterwards.
+   * This property is set just before the first rebuild and doesn't change afterwards, unless
+   * plugins themselves change it.
    *
    * If the inputPath is outside of broccoli's temp directory, then it's lifetime is not managed by
    *the builder.
@@ -31,7 +32,8 @@ interface BroccoliTree {
   /**
    * Contains the fs paths for the output trees.
    *
-   * This property is set just before the first rebuild and doesn't change afterwards.
+   * This property is set just before the first rebuild and doesn't change afterwards, unless the
+   * plugins themselves change it.
    *
    * The underlying directory is also created by the builder just before the first rebuild.
    * This directory is destroyed and recreated upon each rebuild.
@@ -50,6 +52,12 @@ interface BroccoliTree {
 
   inputTree?: BroccoliTree;
   inputTrees?: BroccoliTree[];
+
+  /**
+   * Trees which implement the rebuild api are wrapped automatically for api compat,
+   * and `newStyleTree` keeps a reference to the original unwrapped tree.
+   */
+  newStyleTree?: BroccoliTree;
 
   /**
    * Description or name of the plugin used for reporting.

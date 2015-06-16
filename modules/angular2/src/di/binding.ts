@@ -1,4 +1,4 @@
-import {Type, isBlank, isPresent, CONST} from 'angular2/src/facade/lang';
+import {Type, isBlank, isPresent, CONST, BaseException, stringify} from 'angular2/src/facade/lang';
 import {List, MapWrapper, ListWrapper} from 'angular2/src/facade/collection';
 import {reflector} from 'angular2/src/reflection/reflection';
 import {Key} from './key';
@@ -10,6 +10,7 @@ import {
   DependencyAnnotation
 } from './annotations_impl';
 import {NoAnnotationError} from './exceptions';
+import {resolveForwardRef} from './forward_ref';
 
 /**
  * @private
@@ -138,7 +139,7 @@ export class Binding {
    * var injector = Injector.resolveAndCreate([
    *   new Binding(Number, { toFactory: () => { return 1+2; }}),
    *   new Binding(String, { toFactory: (value) => { return "Value: " + value; },
-   *                         dependencies: [String] })
+   *                         dependencies: [Number] })
    * ]);
    *
    * expect(injector.get(Number)).toEqual(3);
@@ -158,7 +159,7 @@ export class Binding {
    *     return new Promise((resolve) => resolve(1 + 2));
    *   }}),
    *   new Binding(String, { toFactory: (value) => { return "Value: " + value; },
-   *                         dependencies: [String]})
+   *                         dependencies: [Number]})
    * ]);
    *
    * injector.asyncGet(Number).then((v) => expect(v).toBe(3));
@@ -185,7 +186,7 @@ export class Binding {
    * var injector = Injector.resolveAndCreate([
    *   new Binding(Number, { toFactory: () => { return 1+2; }}),
    *   new Binding(String, { toFactory: (value) => { return "Value: " + value; },
-   *                         dependencies: [String] })
+   *                         dependencies: [Number] })
    * ]);
    *
    * expect(injector.get(Number)).toEqual(3);
@@ -195,8 +196,13 @@ export class Binding {
   dependencies: List<any>;
 
   constructor(token, {toClass, toValue, toAlias, toFactory, toAsyncFactory, deps}: {
-                         toClass ?: Type, toValue ?: any, toAlias ?: any, toFactory ?: Function,
-                         toAsyncFactory ?: Function, deps ?: List<any>}) {
+    toClass?: Type,
+    toValue?: any,
+    toAlias?: any,
+    toFactory?: Function,
+    toAsyncFactory?: Function,
+    deps?: List<any>
+  }) {
     this.token = token;
     this.toClass = toClass;
     this.toValue = toValue;
@@ -217,8 +223,9 @@ export class Binding {
     var resolvedDeps;
     var isAsync = false;
     if (isPresent(this.toClass)) {
-      factoryFn = reflector.factory(this.toClass);
-      resolvedDeps = _dependenciesFor(this.toClass);
+      var toClass = resolveForwardRef(this.toClass);
+      factoryFn = reflector.factory(toClass);
+      resolvedDeps = _dependenciesFor(toClass);
     } else if (isPresent(this.toAlias)) {
       factoryFn = (aliasInstance) => aliasInstance;
       resolvedDeps = [Dependency.fromKey(Key.get(this.toAlias))];
@@ -376,7 +383,12 @@ export class BindingBuilder {
    * expect(injectorClass.get(Vehicle) instanceof Car).toBe(true);
    * ```
    */
-  toAlias(aliasToken): Binding { return new Binding(this.token, {toAlias: aliasToken}); }
+  toAlias(aliasToken): Binding {
+    if (isBlank(aliasToken)) {
+      throw new BaseException(`Can not alias ${stringify(this.token)} to a blank value!`);
+    }
+    return new Binding(this.token, {toAlias: aliasToken});
+  }
 
   /**
    * Binds a key to a function which computes the value.
@@ -385,8 +397,8 @@ export class BindingBuilder {
    *
    * ```javascript
    * var injector = Injector.resolveAndCreate([
-   *   bind(Number).toFactory(() => { return 1+2; }}),
-   *   bind(String).toFactory((v) => { return "Value: " + v; }, [Number] })
+   *   bind(Number).toFactory(() => { return 1+2; }),
+   *   bind(String).toFactory((v) => { return "Value: " + v; }, [Number])
    * ]);
    *
    * expect(injector.get(Number)).toEqual(3);
@@ -425,27 +437,36 @@ export class BindingBuilder {
   }
 }
 
-function _constructDependencies(factoryFunction: Function, dependencies: List<any>) {
-  return isBlank(dependencies) ?
-             _dependenciesFor(factoryFunction) :
-             ListWrapper.map(dependencies, (t) => Dependency.fromKey(Key.get(t)));
+function _constructDependencies(factoryFunction: Function,
+                                dependencies: List<any>): List<Dependency> {
+  if (isBlank(dependencies)) {
+    return _dependenciesFor(factoryFunction);
+  } else {
+    var params: List<List<any>> = ListWrapper.map(dependencies, (t) => [t]);
+    return ListWrapper.map(dependencies, (t) => _extractToken(factoryFunction, t, params));
+  }
 }
 
-function _dependenciesFor(typeOrFunc): List<any> {
+function _dependenciesFor(typeOrFunc): List<Dependency> {
   var params = reflector.parameters(typeOrFunc);
   if (isBlank(params)) return [];
   if (ListWrapper.any(params, (p) => isBlank(p))) {
-    throw new NoAnnotationError(typeOrFunc);
+    throw new NoAnnotationError(typeOrFunc, params);
   }
-  return ListWrapper.map(params, (p) => _extractToken(typeOrFunc, p));
+  return ListWrapper.map(params, (p: List<any>) => _extractToken(typeOrFunc, p, params));
 }
 
-function _extractToken(typeOrFunc, annotations) {
+function _extractToken(typeOrFunc, annotations /*List<any> | any*/,
+                       params: List<List<any>>): Dependency {
   var depProps = [];
   var token = null;
   var optional = false;
   var lazy = false;
   var asPromise = false;
+
+  if (!ListWrapper.isList(annotations)) {
+    return _createDependency(annotations, asPromise, lazy, optional, depProps);
+  }
 
   for (var i = 0; i < annotations.length; ++i) {
     var paramAnnotation = annotations[i];
@@ -475,10 +496,12 @@ function _extractToken(typeOrFunc, annotations) {
     }
   }
 
+  token = resolveForwardRef(token);
+
   if (isPresent(token)) {
     return _createDependency(token, asPromise, lazy, optional, depProps);
   } else {
-    throw new NoAnnotationError(typeOrFunc);
+    throw new NoAnnotationError(typeOrFunc, params);
   }
 }
 

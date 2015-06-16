@@ -1,6 +1,5 @@
 import {Injectable} from 'angular2/src/di/decorators';
 import {
-  int,
   isBlank,
   isPresent,
   BaseException,
@@ -29,10 +28,12 @@ import {
   EmptyExpr,
   ImplicitReceiver,
   AccessMember,
+  SafeAccessMember,
   LiteralPrimitive,
   Binary,
   PrefixNot,
   Conditional,
+  If,
   Pipe,
   Assignment,
   Chain,
@@ -41,16 +42,12 @@ import {
   LiteralMap,
   Interpolation,
   MethodCall,
+  SafeMethodCall,
   FunctionCall,
   TemplateBinding,
   ASTWithSource
 } from './ast';
 
-
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
 
 var _implicitReceiver = new ImplicitReceiver();
 // TODO(tbosch): Cannot make this const/final right now because of the transpiler...
@@ -220,10 +217,21 @@ class _ParseAST {
   parsePipe() {
     var result = this.parseExpression();
     if (this.optionalOperator("|")) {
-      return this.parseInlinedPipe(result);
-    } else {
-      return result;
+      if (this.parseAction) {
+        this.error("Cannot have a pipe in an action expression");
+      }
+
+      do {
+        var name = this.expectIdentifierOrKeyword();
+        var args = [];
+        while (this.optionalCharacter($COLON)) {
+          ListWrapper.push(args, this.parsePipe());
+        }
+        result = new Pipe(result, name, args, true);
+      } while (this.optionalOperator("|"));
     }
+
+    return result;
   }
 
   parseExpression() {
@@ -253,13 +261,13 @@ class _ParseAST {
     var result = this.parseLogicalOr();
 
     if (this.optionalOperator('?')) {
-      var yes = this.parseExpression();
+      var yes = this.parsePipe();
       if (!this.optionalCharacter($COLON)) {
         var end = this.inputIndex;
         var expression = this.input.substring(start, end);
         this.error(`Conditional expression ${expression} requires all 3 expressions`);
       }
-      var no = this.parseExpression();
+      var no = this.parsePipe();
       return new Conditional(result, yes, no);
     } else {
       return result;
@@ -366,10 +374,13 @@ class _ParseAST {
     var result = this.parsePrimary();
     while (true) {
       if (this.optionalCharacter($PERIOD)) {
-        result = this.parseAccessMemberOrMethodCall(result);
+        result = this.parseAccessMemberOrMethodCall(result, false);
+
+      } else if (this.optionalOperator('?.')) {
+        result = this.parseAccessMemberOrMethodCall(result, true);
 
       } else if (this.optionalCharacter($LBRACKET)) {
-        var key = this.parseExpression();
+        var key = this.parsePipe();
         this.expectCharacter($RBRACKET);
         result = new KeyedAccess(result, key);
 
@@ -386,9 +397,9 @@ class _ParseAST {
 
   parsePrimary() {
     if (this.optionalCharacter($LPAREN)) {
-      var result = this.parsePipe();
+      let result = this.parsePipe();
       this.expectCharacter($RPAREN);
-      return result;
+      return result
 
     } else if (this.next.isKeywordNull() || this.next.isKeywordUndefined()) {
       this.advance();
@@ -402,6 +413,19 @@ class _ParseAST {
       this.advance();
       return new LiteralPrimitive(false);
 
+    } else if (this.parseAction && this.next.isKeywordIf()) {
+      this.advance();
+      this.expectCharacter($LPAREN);
+      let condition = this.parseExpression();
+      this.expectCharacter($RPAREN);
+      let ifExp = this.parseExpressionOrBlock();
+      let elseExp;
+      if (this.next.isKeywordElse()) {
+        this.advance();
+        elseExp = this.parseExpressionOrBlock();
+      }
+      return new If(condition, ifExp, elseExp)
+
     } else if (this.optionalCharacter($LBRACKET)) {
       var elements = this.parseExpressionList($RBRACKET);
       this.expectCharacter($RBRACKET);
@@ -411,7 +435,7 @@ class _ParseAST {
       return this.parseLiteralMap();
 
     } else if (this.next.isIdentifier()) {
-      return this.parseAccessMemberOrMethodCall(_implicitReceiver);
+      return this.parseAccessMemberOrMethodCall(_implicitReceiver, false);
 
     } else if (this.next.isNumber()) {
       var value = this.next.toNumber();
@@ -435,7 +459,7 @@ class _ParseAST {
     var result = [];
     if (!this.next.isCharacter(terminator)) {
       do {
-        ListWrapper.push(result, this.parseExpression());
+        ListWrapper.push(result, this.parsePipe());
       } while (this.optionalCharacter($COMMA));
     }
     return result;
@@ -450,59 +474,70 @@ class _ParseAST {
         var key = this.expectIdentifierOrKeywordOrString();
         ListWrapper.push(keys, key);
         this.expectCharacter($COLON);
-        ListWrapper.push(values, this.parseExpression());
+        ListWrapper.push(values, this.parsePipe());
       } while (this.optionalCharacter($COMMA));
       this.expectCharacter($RBRACE);
     }
     return new LiteralMap(keys, values);
   }
 
-  parseAccessMemberOrMethodCall(receiver): AST {
-    var id = this.expectIdentifierOrKeyword();
+  parseAccessMemberOrMethodCall(receiver, isSafe: boolean = false): AST {
+    let id = this.expectIdentifierOrKeyword();
 
     if (this.optionalCharacter($LPAREN)) {
-      var args = this.parseCallArguments();
+      let args = this.parseCallArguments();
       this.expectCharacter($RPAREN);
-      var fn = this.reflector.method(id);
-      return new MethodCall(receiver, id, fn, args);
+      let fn = this.reflector.method(id);
+      return isSafe ? new SafeMethodCall(receiver, id, fn, args) :
+                      new MethodCall(receiver, id, fn, args);
 
     } else {
-      var getter = this.reflector.getter(id);
-      var setter = this.reflector.setter(id);
-      var am = new AccessMember(receiver, id, getter, setter);
-
-      if (this.optionalOperator("|")) {
-        return this.parseInlinedPipe(am);
-      } else {
-        return am;
-      }
+      let getter = this.reflector.getter(id);
+      let setter = this.reflector.setter(id);
+      return isSafe ? new SafeAccessMember(receiver, id, getter, setter) :
+                      new AccessMember(receiver, id, getter, setter);
     }
-  }
-
-  parseInlinedPipe(result) {
-    do {
-      if (this.parseAction) {
-        this.error("Cannot have a pipe in an action expression");
-      }
-      var name = this.expectIdentifierOrKeyword();
-      var args = ListWrapper.create();
-      while (this.optionalCharacter($COLON)) {
-        ListWrapper.push(args, this.parseExpression());
-      }
-      result = new Pipe(result, name, args, true);
-    } while (this.optionalOperator("|"));
-
-    return result;
   }
 
   parseCallArguments() {
     if (this.next.isCharacter($RPAREN)) return [];
     var positionals = [];
     do {
-      ListWrapper.push(positionals, this.parseExpression());
+      ListWrapper.push(positionals, this.parsePipe());
     } while (this.optionalCharacter($COMMA));
     return positionals;
   }
+
+  parseExpressionOrBlock(): AST {
+    if (this.optionalCharacter($LBRACE)) {
+      let block = this.parseBlockContent();
+      this.expectCharacter($RBRACE);
+      return block;
+    }
+
+    return this.parseExpression();
+  }
+
+  parseBlockContent(): AST {
+    if (!this.parseAction) {
+      this.error("Binding expression cannot contain chained expression");
+    }
+    var exprs = [];
+    while (this.index < this.tokens.length && !this.next.isCharacter($RBRACE)) {
+      var expr = this.parseExpression();
+      ListWrapper.push(exprs, expr);
+
+      if (this.optionalCharacter($SEMICOLON)) {
+        while (this.optionalCharacter($SEMICOLON)) {
+        }  // read all semicolons
+      }
+    }
+    if (exprs.length == 0) return new EmptyExpr();
+    if (exprs.length == 1) return exprs[0];
+
+    return new Chain(exprs);
+  }
+
 
   /**
    * An identifier, a keyword, a string with an optional `-` inbetween.
@@ -537,19 +572,17 @@ class _ParseAST {
       this.optionalCharacter($COLON);
       var name = null;
       var expression = null;
-      if (this.next !== EOF) {
-        if (keyIsVar) {
-          if (this.optionalOperator("=")) {
-            name = this.expectTemplateBindingKey();
-          } else {
-            name = '\$implicit';
-          }
-        } else if (!this.peekKeywordVar()) {
-          var start = this.inputIndex;
-          var ast = this.parsePipe();
-          var source = this.input.substring(start, this.inputIndex);
-          expression = new ASTWithSource(ast, source, this.location);
+      if (keyIsVar) {
+        if (this.optionalOperator("=")) {
+          name = this.expectTemplateBindingKey();
+        } else {
+          name = '\$implicit';
         }
+      } else if (this.next !== EOF && !this.peekKeywordVar()) {
+        var start = this.inputIndex;
+        var ast = this.parsePipe();
+        var source = this.input.substring(start, this.inputIndex);
+        expression = new ASTWithSource(ast, source, this.location);
       }
       ListWrapper.push(bindings, new TemplateBinding(key, keyIsVar, name, expression));
       if (!this.optionalCharacter($SEMICOLON)) {

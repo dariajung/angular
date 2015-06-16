@@ -1,12 +1,11 @@
-import {BaseException} from 'angular2/src/facade/lang';
-
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
+import {BaseException, isBlank} from 'angular2/src/facade/lang';
 
 export var DOM: DomAdapter;
 
 export function setRootDomAdapter(adapter: DomAdapter) {
-  DOM = adapter;
+  if (isBlank(DOM)) {
+    DOM = adapter;
+  }
 }
 
 function _abstract() {
@@ -23,7 +22,7 @@ export class DomAdapter {
    * Maps attribute names to their corresponding property names for cases
    * where attribute name doesn't match property name.
    */
-  get attrToPropMap(): any { throw _abstract(); }
+  get attrToPropMap(): StringMap<string, string> { throw _abstract(); }
 
   parse(templateHtml: string) { throw _abstract(); }
   query(selector: string): any { throw _abstract(); }
@@ -34,6 +33,7 @@ export class DomAdapter {
   dispatchEvent(el, evt) { throw _abstract(); }
   createMouseEvent(eventType): any { throw _abstract(); }
   createEvent(eventType: string): any { throw _abstract(); }
+  preventDefault(evt) { throw _abstract(); }
   getInnerHTML(el): string { throw _abstract(); }
   getOuterHTML(el): string { throw _abstract(); }
   nodeName(node): string { throw _abstract(); }
@@ -81,7 +81,7 @@ export class DomAdapter {
   removeStyle(element, stylename: string) { throw _abstract(); }
   getStyle(element, stylename: string) { throw _abstract(); }
   tagName(element): string { throw _abstract(); }
-  attributeMap(element) { throw _abstract(); }
+  attributeMap(element): Map<string, string> { throw _abstract(); }
   hasAttribute(element, attribute: string): boolean { throw _abstract(); }
   getAttribute(element, attribute: string): string { throw _abstract(); }
   setAttribute(element, name: string, value: string) { throw _abstract(); }
@@ -90,7 +90,7 @@ export class DomAdapter {
   createHtmlDocument() { throw _abstract(); }
   defaultDoc(): any { throw _abstract(); }
   getBoundingClientRect(el) { throw _abstract(); }
-  getTitle() { throw _abstract(); }
+  getTitle(): string { throw _abstract(); }
   setTitle(newTitle: string) { throw _abstract(); }
   elementMatches(n, selector: string): boolean { throw _abstract(); }
   isTemplateElement(el: any): boolean { throw _abstract(); }
@@ -110,8 +110,12 @@ export class DomAdapter {
   cssToRules(css: string): List<any> { throw _abstract(); }
   supportsDOMEvents(): boolean { throw _abstract(); }
   supportsNativeShadowDOM(): boolean { throw _abstract(); }
-  getGlobalEventTarget(target: string) { throw _abstract(); }
-  getHistory() { throw _abstract(); }
-  getLocation() { throw _abstract(); }
-  getBaseHref() { throw _abstract(); }
+  getGlobalEventTarget(target: string): any { throw _abstract(); }
+  getHistory(): any { throw _abstract(); }
+  getLocation(): any { throw _abstract(); }
+  getBaseHref(): string { throw _abstract(); }
+  getUserAgent(): string { throw _abstract(); }
+  setData(element, name: string, value: string) { throw _abstract(); }
+  getData(element, name: string): string { throw _abstract(); }
+  setGlobalVar(name: string, value: any) { throw _abstract(); }
 }

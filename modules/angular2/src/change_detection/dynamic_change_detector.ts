@@ -1,5 +1,6 @@
 import {isPresent, isBlank, BaseException, FunctionWrapper} from 'angular2/src/facade/lang';
 import {List, ListWrapper, MapWrapper, StringMapWrapper} from 'angular2/src/facade/collection';
+import {Locals} from 'angular2/src/change_detection/parser/locals';
 
 import {AbstractChangeDetector} from './abstract_change_detector';
 import {BindingRecord} from './binding_record';
@@ -7,35 +8,18 @@ import {PipeRegistry} from './pipes/pipe_registry';
 import {ChangeDetectionUtil, SimpleChange, uninitialized} from './change_detection_util';
 
 
-import {
-  ProtoRecord,
-  RECORD_TYPE_SELF,
-  RECORD_TYPE_PROPERTY,
-  RECORD_TYPE_LOCAL,
-  RECORD_TYPE_INVOKE_METHOD,
-  RECORD_TYPE_CONST,
-  RECORD_TYPE_INVOKE_CLOSURE,
-  RECORD_TYPE_PRIMITIVE_OP,
-  RECORD_TYPE_KEYED_ACCESS,
-  RECORD_TYPE_PIPE,
-  RECORD_TYPE_BINDING_PIPE,
-  RECORD_TYPE_INTERPOLATE
-} from './proto_record';
+import {ProtoRecord, RecordType} from './proto_record';
 
 import {ExpressionChangedAfterItHasBeenChecked, ChangeDetectionError} from './exceptions';
 
-// HACK: workaround for Traceur behavior.
-// It expects all transpiled modules to contain this marker.
-// TODO: remove this when we no longer use traceur
-export var __esModule = true;
-
 export class DynamicChangeDetector extends AbstractChangeDetector {
-  locals: any;
+  locals: Locals = null;
   values: List<any>;
   changes: List<any>;
   pipes: List<any>;
   prevContexts: List<any>;
-  directives: any;
+  directives: any = null;
+  alreadyChecked: boolean = false;
 
   constructor(private changeControlStrategy: string, private dispatcher: any,
               private pipeRegistry: PipeRegistry, private protos: List<ProtoRecord>,
@@ -46,24 +30,25 @@ export class DynamicChangeDetector extends AbstractChangeDetector {
     this.prevContexts = ListWrapper.createFixedSize(protos.length + 1);
     this.changes = ListWrapper.createFixedSize(protos.length + 1);
 
-    ListWrapper.fill(this.values, uninitialized);
+    this.values[0] = null;
+    ListWrapper.fill(this.values, uninitialized, 1);
     ListWrapper.fill(this.pipes, null);
     ListWrapper.fill(this.prevContexts, uninitialized);
     ListWrapper.fill(this.changes, false);
-    this.locals = null;
-    this.directives = null;
   }
 
-  hydrate(context: any, locals: any, directives: any) {
+  hydrate(context: any, locals: Locals, directives: any) {
     this.mode = ChangeDetectionUtil.changeDetectionMode(this.changeControlStrategy);
     this.values[0] = context;
     this.locals = locals;
     this.directives = directives;
+    this.alreadyChecked = false;
   }
 
   dehydrate() {
     this._destroyPipes();
-    ListWrapper.fill(this.values, uninitialized);
+    this.values[0] = null;
+    ListWrapper.fill(this.values, uninitialized, 1);
     ListWrapper.fill(this.changes, false);
     ListWrapper.fill(this.pipes, null);
     ListWrapper.fill(this.prevContexts, uninitialized);
@@ -78,10 +63,13 @@ export class DynamicChangeDetector extends AbstractChangeDetector {
     }
   }
 
-  hydrated(): boolean { return this.values[0] !== uninitialized; }
+  hydrated(): boolean { return this.values[0] !== null; }
 
   detectChangesInRecords(throwOnChange: boolean) {
-    var protos: List < ProtoRecord >= this.protos;
+    if (!this.hydrated()) {
+      ChangeDetectionUtil.throwDehydrated();
+    }
+    var protos: List<ProtoRecord> = this.protos;
 
     var changes = null;
     var isChanged = false;
@@ -90,19 +78,26 @@ export class DynamicChangeDetector extends AbstractChangeDetector {
       var bindingRecord = proto.bindingRecord;
       var directiveRecord = bindingRecord.directiveRecord;
 
-      var change = this._check(proto, throwOnChange);
-      if (isPresent(change)) {
-        this._updateDirectiveOrElement(change, bindingRecord);
-        isChanged = true;
-        changes = this._addChange(bindingRecord, change, changes);
+      if (proto.isLifeCycleRecord()) {
+        if (proto.name === "onCheck" && !throwOnChange) {
+          this._getDirectiveFor(directiveRecord.directiveIndex).onCheck();
+        } else if (proto.name === "onInit" && !throwOnChange && !this.alreadyChecked) {
+          this._getDirectiveFor(directiveRecord.directiveIndex).onInit();
+        } else if (proto.name === "onChange" && isPresent(changes) && !throwOnChange) {
+          this._getDirectiveFor(directiveRecord.directiveIndex).onChange(changes);
+        }
+
+      } else {
+        var change = this._check(proto, throwOnChange);
+        if (isPresent(change)) {
+          this._updateDirectiveOrElement(change, bindingRecord);
+          isChanged = true;
+          changes = this._addChange(bindingRecord, change, changes);
+        }
       }
 
       if (proto.lastInDirective) {
-        if (isPresent(changes)) {
-          this._getDirectiveFor(directiveRecord.directiveIndex).onChange(changes);
-          changes = null;
-        }
-
+        changes = null;
         if (isChanged && bindingRecord.isOnPushChangeDetection()) {
           this._getDetectorFor(directiveRecord.directiveIndex).markAsCheckOnce();
         }
@@ -110,9 +105,12 @@ export class DynamicChangeDetector extends AbstractChangeDetector {
         isChanged = false;
       }
     }
+
+    this.alreadyChecked = true;
   }
 
   callOnAllChangesDone() {
+    this.dispatcher.notifyOnAllChangesDone();
     var dirs = this.directiveRecords;
     for (var i = dirs.length - 1; i >= 0; --i) {
       var dir = dirs[i];
@@ -145,7 +143,7 @@ export class DynamicChangeDetector extends AbstractChangeDetector {
 
   _check(proto: ProtoRecord, throwOnChange: boolean): SimpleChange {
     try {
-      if (proto.mode === RECORD_TYPE_PIPE || proto.mode === RECORD_TYPE_BINDING_PIPE) {
+      if (proto.isPipeRecord()) {
         return this._pipeCheck(proto, throwOnChange);
       } else {
         return this._referenceCheck(proto, throwOnChange);
@@ -187,33 +185,45 @@ export class DynamicChangeDetector extends AbstractChangeDetector {
 
   _calculateCurrValue(proto: ProtoRecord) {
     switch (proto.mode) {
-      case RECORD_TYPE_SELF:
+      case RecordType.SELF:
         return this._readContext(proto);
 
-      case RECORD_TYPE_CONST:
+      case RecordType.CONST:
         return proto.funcOrValue;
 
-      case RECORD_TYPE_PROPERTY:
+      case RecordType.PROPERTY:
         var context = this._readContext(proto);
         return proto.funcOrValue(context);
 
-      case RECORD_TYPE_LOCAL:
+      case RecordType.SAFE_PROPERTY:
+        var context = this._readContext(proto);
+        return isBlank(context) ? null : proto.funcOrValue(context);
+
+      case RecordType.LOCAL:
         return this.locals.get(proto.name);
 
-      case RECORD_TYPE_INVOKE_METHOD:
+      case RecordType.INVOKE_METHOD:
         var context = this._readContext(proto);
         var args = this._readArgs(proto);
         return proto.funcOrValue(context, args);
 
-      case RECORD_TYPE_KEYED_ACCESS:
+      case RecordType.SAFE_INVOKE_METHOD:
+        var context = this._readContext(proto);
+        if (isBlank(context)) {
+          return null;
+        }
+        var args = this._readArgs(proto);
+        return proto.funcOrValue(context, args);
+
+      case RecordType.KEYED_ACCESS:
         var arg = this._readArgs(proto)[0];
         return this._readContext(proto)[arg];
 
-      case RECORD_TYPE_INVOKE_CLOSURE:
+      case RecordType.INVOKE_CLOSURE:
         return FunctionWrapper.apply(this._readContext(proto), this._readArgs(proto));
 
-      case RECORD_TYPE_INTERPOLATE:
-      case RECORD_TYPE_PRIMITIVE_OP:
+      case RecordType.INTERPOLATE:
+      case RecordType.PRIMITIVE_OP:
         return FunctionWrapper.apply(proto.funcOrValue, this._readArgs(proto));
 
       default:
@@ -265,7 +275,7 @@ export class DynamicChangeDetector extends AbstractChangeDetector {
     //
     // In the future, pipes declared in the bind configuration should
     // be able to access the changeDetectorRef of that component.
-    var cdr = proto.mode === RECORD_TYPE_BINDING_PIPE ? this.ref : null;
+    var cdr = proto.mode === RecordType.BINDING_PIPE ? this.ref : null;
     var pipe = this.pipeRegistry.get(proto.name, context, cdr);
     this._writePipe(proto, pipe);
     return pipe;

@@ -3,9 +3,8 @@
     "id":"GoodbyeCmp",
     "selector":"goodbye-app",
     "compileChildren":true,
-    "hostListeners":{},
-    "hostProperties":{},
-    "properties":{},
+    "host":{},
+    "properties":[],
     "readAttributes":[],
     "type":1,
     "version":1

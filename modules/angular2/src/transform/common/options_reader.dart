@@ -10,10 +10,12 @@ TransformerOptions parseBarbackSettings(BarbackSettings settings) {
   var entryPoints = _readFileList(config, ENTRY_POINT_PARAM);
   var reflectionEntryPoints =
       _readFileList(config, REFLECTION_ENTRY_POINT_PARAM);
-  var initReflector = !config.containsKey('init_reflector') ||
-      config['init_reflector'] != false;
+  var initReflector =
+      _readBool(config, INIT_REFLECTOR_PARAM, defaultValue: true);
+  var generateChangeDetectors =
+      _readBool(config, GENERATE_CHANGE_DETECTORS_PARAM, defaultValue: true);
   String mirrorModeVal =
-      config.containsKey('mirror_mode') ? config['mirror_mode'] : '';
+      config.containsKey(MIRROR_MODE_PARAM) ? config[MIRROR_MODE_PARAM] : '';
   var mirrorMode = MirrorMode.none;
   switch (mirrorModeVal) {
     case 'debug':
@@ -26,12 +28,22 @@ TransformerOptions parseBarbackSettings(BarbackSettings settings) {
       mirrorMode = MirrorMode.none;
       break;
   }
+  var optimizationPhases = _readInt(config, OPTIMIZATION_PHASES_PARAM,
+      defaultValue: DEFAULT_OPTIMIZATION_PHASES);
   return new TransformerOptions(entryPoints,
       reflectionEntryPoints: reflectionEntryPoints,
       modeName: settings.mode.name,
       mirrorMode: mirrorMode,
       initReflector: initReflector,
-      customAnnotationDescriptors: _readCustomAnnotations(config));
+      customAnnotationDescriptors: _readCustomAnnotations(config),
+      optimizationPhases: optimizationPhases,
+      generateChangeDetectors: generateChangeDetectors);
+}
+
+bool _readBool(Map config, String paramName, {bool defaultValue}) {
+  return config.containsKey(paramName)
+      ? config[paramName] != false
+      : defaultValue;
 }
 
 /// Cribbed from the polymer project.
@@ -54,6 +66,18 @@ List<String> _readFileList(Map config, String paramName) {
     print('Invalid value for "$paramName" in the Angular 2 transformer.');
   }
   return files;
+}
+
+int _readInt(Map config, String paramName, {int defaultValue: null}) {
+  if (!config.containsKey(paramName)) return defaultValue;
+  var value = config[paramName];
+  if (value is String) {
+    value = int.parse(value);
+  }
+  if (value is! int) {
+    throw new ArgumentError.value(value, paramName, 'Expected an integer');
+  }
+  return value;
 }
 
 /// Parse the [CUSTOM_ANNOTATIONS_PARAM] options out of the transformer into

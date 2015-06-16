@@ -1,10 +1,11 @@
 library reflection.reflection_capabilities;
 
-import 'reflection.dart';
+import 'package:angular2/src/facade/lang.dart';
 import 'types.dart';
 import 'dart:mirrors';
+import 'platform_reflection_capabilities.dart';
 
-class ReflectionCapabilities {
+class ReflectionCapabilities implements PlatformReflectionCapabilities {
   ReflectionCapabilities([metadataReader]) {}
 
   Function factory(Type type) {
@@ -43,9 +44,41 @@ class ReflectionCapabilities {
       case 10:
         return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) =>
             create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10]).reflectee;
+      case 11:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11]).reflectee;
+      case 12:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12]).reflectee;
+      case 13:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13]).reflectee;
+      case 14:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14]).reflectee;
+      case 15:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15]).reflectee;
+      case 16:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16]).reflectee;
+      case 17:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17]).reflectee;
+      case 18:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18]).reflectee;
+      case 19:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19]).
+                reflectee;
+      case 20:
+        return (a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20) =>
+            create(name, [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20]).
+                reflectee;
     }
 
-    throw "Factory cannot take more than 10 arguments";
+    throw "Cannot create a factory for '${stringify(type)}' because its constructor has more than 20 arguments";
   }
 
   List<List> parameters(typeOrFunc) {
@@ -56,8 +89,10 @@ class ReflectionCapabilities {
   }
 
   List _convertParameter(ParameterMirror p) {
-    var t = p.type.reflectedType;
-    var res = t == dynamic ? [] : [t];
+    var t = p.type;
+    var res = (!t.hasReflectedType || t.reflectedType == dynamic)
+        ? []
+        : [t.reflectedType];
     res.addAll(p.metadata.map((m) => m.reflectee));
     return res;
   }
@@ -68,6 +103,11 @@ class ReflectionCapabilities {
         : _functionMetadata(typeOrFunc);
 
     return meta.map((m) => m.reflectee).toList();
+  }
+
+  List interfaces(type) {
+    ClassMirror classMirror = reflectType(type);
+    return classMirror.superinterfaces.map((si) => si.reflectedType).toList();
   }
 
   GetterFn getter(String name) {

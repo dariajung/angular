@@ -82,7 +82,7 @@ class StringMapWrapper {
     }
     return m;
   }
-  static List<String> keys(Map<String,dynamic> a) {
+  static List<String> keys(Map<String, dynamic> a) {
     return a.keys.toList();
   }
   static bool isEmpty(Map m) => m.isEmpty;
@@ -130,9 +130,10 @@ class ListWrapper {
     l.add(e);
   }
   static List concat(List a, List b) {
-    return []
-      ..addAll(a)
-      ..addAll(b);
+    return new List()
+      ..length = a.length + b.length
+      ..setRange(0, a.length, a)
+      ..setRange(a.length, a.length + b.length, b);
   }
   static bool isList(l) => l is List;
   static void insert(List l, int index, value) {
@@ -171,8 +172,12 @@ class ListWrapper {
     l.removeRange(from, to);
     return sub;
   }
-  static void sort(List l, compareFn(a, b)) {
-    l.sort(compareFn);
+  static void sort(List l, [compareFn(a, b) = null]) {
+    if (compareFn == null) {
+      l.sort();
+    } else {
+      l.sort(compareFn);
+    }
   }
 
   // JS splice, slice, fill functions can take start < 0 which indicates a position relative to
